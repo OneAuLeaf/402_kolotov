@@ -83,23 +83,19 @@ namespace Recognition
             {
                 cancelRequest.Wait();
                 cts.Cancel();
-            });
+            },
+            TaskCreationOptions.LongRunning);
 
-              var preProcessing = new TransformBlock<string, RecognizedImage>(file =>
+            var preProcessing = new TransformBlock<string, RecognizedImage>(file =>
             {
-                try
-                {
-                    cts.Token.ThrowIfCancellationRequested();
-                    var name = Path.GetFileName(file);
-                    var fullPath = Path.Combine(inputPath, name);
-                    if (s_imageExtensions.Contains(Path.GetExtension(name))) {
-                        return new RecognizedImage(name, fullPath, new Bitmap(Image.FromFile(fullPath)), null);
-                    } else {
-                        return null;
-                    }
+                if (cts.Token.IsCancellationRequested) {
+                    return null;
                 }
-                catch (OperationCanceledException)
-                {
+                var name = Path.GetFileName(file);
+                var fullPath = Path.Combine(inputPath, name);
+                if (s_imageExtensions.Contains(Path.GetExtension(name))) {
+                    return new RecognizedImage(name, fullPath, new Bitmap(Image.FromFile(fullPath)), null);
+                } else {
                     return null;
                 }
             },
@@ -109,19 +105,15 @@ namespace Recognition
                 MaxDegreeOfParallelism = ThreadNum
             });
 
-            var predicting = new ActionBlock<RecognizedImage>(async x =>
+            var predicting = new ActionBlock<RecognizedImage>(x =>
             {
-                try
-                {
-                    cts.Token.ThrowIfCancellationRequested();
-                    var engine = mlContext.Model.CreatePredictionEngine<YoloV4BitmapData, YoloV4Prediction>(fitted);
-                    var results = await AsyncPredict(engine, x.Bitmap);
-                    x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(x => new RecognizedObject(x)).ToList();
-                    ResultsQueue.Enqueue(x);
+                if (cts.Token.IsCancellationRequested) {
+                    return;
                 }
-                catch (OperationCanceledException)
-                {
-                }
+                var engine = mlContext.Model.CreatePredictionEngine<YoloV4BitmapData, YoloV4Prediction>(fitted);
+                var results = engine.Predict(new YoloV4BitmapData() { Image = x.Bitmap });
+                x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(x => new RecognizedObject(x)).ToList();
+                ResultsQueue.Enqueue(x);
             },
             new ExecutionDataflowBlockOptions
             {
@@ -142,15 +134,6 @@ namespace Recognition
             catch (TaskCanceledException)
             {
             }
-        }
-
-        public async Task<YoloV4Prediction> AsyncPredict(PredictionEngine<YoloV4BitmapData, YoloV4Prediction> engine, Bitmap bitmap)
-        {
-            return await Task<YoloV4Prediction>.Factory.StartNew( () =>
-            {
-                return engine.Predict(new YoloV4BitmapData() { Image = bitmap });
-            });
-
         }
             
         public void Cancel()
