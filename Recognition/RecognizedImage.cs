@@ -17,7 +17,7 @@ namespace Recognition
             ImageName = imageName;
             ImagePath = imagePath;
             Bitmap = bitmap;
-            Objects = objects?.Select(x => new RecognizedObject(x)).ToList();
+            Objects = objects?.Select(x => new RecognizedObject(x, bitmap)).ToList();
         }
 
         public string ToString(string format)
@@ -36,14 +36,23 @@ namespace Recognition
     {
         public string Label { get; }
         public float Confidence { get; }
+        public Box Box { get; }
+        public Bitmap CroppedImage { get; }
 
-        public Box Box;
-
-        public RecognizedObject(YoloV4Result res)
+        public RecognizedObject(YoloV4Result res, Bitmap image)
         {
             Label = res.Label;
             Box = new Box(res.BBox[0], res.BBox[1], res.BBox[2], res.BBox[3]);
             Confidence = res.Confidence;
+
+            CroppedImage = new Bitmap((int)Box.W, (int)Box.H);
+
+            using (Graphics g = Graphics.FromImage(CroppedImage))
+            {
+                g.DrawImage(image, new Rectangle(0, 0, CroppedImage.Width, CroppedImage.Height),
+                                 Box.Rectangle,
+                                 GraphicsUnit.Pixel);
+            }
         }
 
         public string ToString(string format)
@@ -59,10 +68,12 @@ namespace Recognition
 
     public struct Box
     {
-        public float X { get; private set; }
-        public float Y { get; private set; }
-        public float W { get; private set; }
-        public float H { get; private set; }
+        public float X { get; }
+        public float Y { get; }
+        public float W { get; }
+        public float H { get; }
+
+        public Rectangle Rectangle => new Rectangle((int)X, (int)Y, (int)W, (int)H);
 
         public Box(float x1, float y1, float x2, float y2)
         {

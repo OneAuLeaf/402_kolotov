@@ -8,7 +8,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Collections.Concurrent;
-using Recognition; 
 using static Microsoft.ML.Transforms.Image.ImageResizingEstimator;
 
 namespace Recognition
@@ -33,7 +32,7 @@ namespace Recognition
 
         SemaphoreSlim cancelRequest = new SemaphoreSlim(0, 1);
 
-        public ConcurrentQueue<RecognizedImage> ResultsQueue = new ConcurrentQueue<RecognizedImage>();
+        public IReceivableSourceBlock<RecognizedImage> ResultsQueue;
         public string ModelPath { get; private set; }
         public int ThreadNum { get; private set; }
 
@@ -51,7 +50,6 @@ namespace Recognition
 
             // model is available here:
             // https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/yolov4
-
             // Define scoring pipeline
             var pipeline = mlContext.Transforms.ResizeImages(inputColumnName: "bitmap", outputColumnName: "input_1:0", imageWidth: 416, imageHeight: 416, resizing: ResizingKind.IsoPad)
                 .Append(mlContext.Transforms.ExtractPixels(outputColumnName: "input_1:0", scaleImage: 1f / 255f, interleavePixelColors: true))
@@ -92,9 +90,8 @@ namespace Recognition
                     return null;
                 }
                 var name = Path.GetFileName(file);
-                var fullPath = Path.Combine(inputPath, name);
                 if (s_imageExtensions.Contains(Path.GetExtension(name))) {
-                    return new RecognizedImage(name, fullPath, new Bitmap(Image.FromFile(fullPath)), null);
+                    return new RecognizedImage(name, file, new Bitmap(Image.FromFile(file)), null);
                 } else {
                     return null;
                 }
@@ -105,16 +102,22 @@ namespace Recognition
                 MaxDegreeOfParallelism = ThreadNum
             });
 
-            var predicting = new ActionBlock<RecognizedImage>(x =>
+            var predicting = new TransformBlock<RecognizedImage, RecognizedImage>(x =>
             {
                 if (cts.Token.IsCancellationRequested) {
-                    return;
+                    return null;
                 }
                 var engine = mlContext.Model.CreatePredictionEngine<YoloV4BitmapData, YoloV4Prediction>(fitted);
                 var results = engine.Predict(new YoloV4BitmapData() { Image = x.Bitmap });
-                x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(x => new RecognizedObject(x)).ToList();
-                ResultsQueue.Enqueue(x);
+                x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(y => new RecognizedObject(y, x.Bitmap)).ToList();
+                return x;
             },
+            new ExecutionDataflowBlockOptions
+            {
+                CancellationToken = cts.Token,
+                MaxDegreeOfParallelism = ThreadNum
+            });
+            var producing = new BufferBlock<RecognizedImage>(
             new ExecutionDataflowBlockOptions
             {
                 CancellationToken = cts.Token,
@@ -123,16 +126,23 @@ namespace Recognition
 
             var linkOption = new DataflowLinkOptions { PropagateCompletion = true };
             preProcessing.LinkTo(predicting, linkOption, x => x != null);
+            predicting.LinkTo(producing, linkOption, x => x != null);
 
             Parallel.ForEach(allFiles, file => preProcessing.Post(file));
+
+            ResultsQueue = producing;
 
             preProcessing.Complete();
             try
             {
-                await predicting.Completion; 
+                await producing.Completion; 
             }
             catch (TaskCanceledException)
             {
+            }
+            finally
+            {
+                cancelRequest.Release();
             }
         }
             
