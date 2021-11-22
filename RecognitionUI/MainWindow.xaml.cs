@@ -4,11 +4,6 @@ using System.ComponentModel;
 
 namespace RecognitionUI
 {
-    /// <summary>
-    /// 1 час написания кода на C# вызывает легкую тревожность
-    /// 3 часа - плохо скрываемое раздражение
-    /// 5 часов и более - ничего кроме открытой ненависти
-    /// </summary>
     public partial class MainWindow : Window
     {
         IModel viewModel;

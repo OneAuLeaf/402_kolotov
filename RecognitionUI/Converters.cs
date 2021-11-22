@@ -4,6 +4,7 @@ using System.Windows.Data;
 using Recognition;
 using System.Windows.Media.Imaging;
 using System.Windows;
+using System.IO;
 
 namespace RecognitionUI
 {
@@ -38,13 +39,13 @@ namespace RecognitionUI
             switch (r.Next(4))
             {
                 case 0:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0003.jpg"));
+                    return new BitmapImage(new Uri(Directory.GetCurrentDirectory() + @"\Resources\cat_once_frame_0003.jpg"));
                 case 1:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0006.jpg"));
+                    return new BitmapImage(new Uri(Directory.GetCurrentDirectory() + @"\Resources\cat_once_frame_0006.jpg"));
                 case 2:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0013.jpg"));
+                    return new BitmapImage(new Uri(Directory.GetCurrentDirectory() + @"\Resources\cat_once_frame_0013.jpg"));
                 default:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0014.jpg"));
+                    return new BitmapImage(new Uri(Directory.GetCurrentDirectory() + @"\Resources\cat_once_frame_0014.jpg"));
             }
         }
     }
