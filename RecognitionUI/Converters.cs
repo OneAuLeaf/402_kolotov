@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Globalization;
 using System.Windows.Data;
-using System.Drawing;
 using Recognition;
 using System.Windows.Media.Imaging;
-using System.Windows.Media;
+using System.Windows;
 
 namespace RecognitionUI
 {
@@ -17,7 +16,13 @@ namespace RecognitionUI
             RecognizedObject data = value as RecognizedObject;
             if (data != null)
             {
-                return FastConvert(data.CroppedImage);
+                var source = new BitmapImage(new Uri(data.OriginPath));
+                source.Freeze();
+                var rect = new Int32Rect((int)data.Box.X, (int)data.Box.Y, (int)data.Box.W, (int)data.Box.H);
+                var image = new CroppedBitmap(source, rect);
+                image.Freeze();
+
+                return image;
             }
             return DefaultConvert();
         }
@@ -27,38 +32,20 @@ namespace RecognitionUI
             return value;
         }
 
-        private static BitmapSource FastConvert(Bitmap bitmap)
-        {
-            var bitmapData = bitmap.LockBits(
-                new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                System.Drawing.Imaging.ImageLockMode.ReadOnly, bitmap.PixelFormat);
-
-            var bitmapSource = BitmapSource.Create(
-                bitmapData.Width, bitmapData.Height,
-                bitmap.HorizontalResolution, bitmap.VerticalResolution,
-                PixelFormats.Bgr24, null,
-                bitmapData.Scan0, bitmapData.Stride * bitmapData.Height, bitmapData.Stride);
-
-            bitmap.UnlockBits(bitmapData);
-
-            return bitmapSource;
-        }
-
         private BitmapImage DefaultConvert()
         {
             var r = new Random(Environment.TickCount);
             switch (r.Next(4))
             {
                 case 0:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\cat_once_frame_0003.jpg"));
+                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0003.jpg"));
                 case 1:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\cat_once_frame_0006.jpg"));
+                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0006.jpg"));
                 case 2:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\cat_once_frame_0013.jpg"));
-                case 3:
-                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\cat_once_frame_0014.jpg"));
+                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0013.jpg"));
+                default:
+                    return new BitmapImage(new Uri(@"E:\Projects\C#Labs\YOLOV4\cat_once_frame_0014.jpg"));
             }
-            return new BitmapImage(new Uri(@"E:\Projects\C#Labs\cat_once.gif"));
         }
     }
 
@@ -70,7 +57,7 @@ namespace RecognitionUI
             RecognizedObject data = value as RecognizedObject;
             if (data != null)
             {
-                return $"{data.Label} {data.Confidence}";
+                return $"Find {data.Label} with confidence = {data.Confidence}";
             }
             return "";
         }
@@ -82,14 +69,47 @@ namespace RecognitionUI
     }
 
     [ValueConversion(typeof(RecognizedObject), typeof(string))]
-    public class RecognizedObjectConverterBox : IValueConverter
+    public class RecognizedObjectConverterFrom : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             RecognizedObject data = value as RecognizedObject;
             if (data != null)
             {
-                return $"{data.Box}";
+                return $"Cropped from Image = \"{data.OriginPath}\"";
+            }
+            return "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value;
+        }
+    }
+
+    [ValueConversion(typeof(StateVM), typeof(string))]
+    public class StateConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            StateVM data = value as StateVM;
+            if (data != null)
+            {
+                switch (data.State)
+                {
+                    case StateVM.States.UNREADY:
+                        return "Select model path and folder w/ images";
+                    case StateVM.States.READY:
+                        return $"{data.ImagesCount} images found";
+                    case StateVM.States.PROCESS:
+                        return $"processing...{data.ProgressCount}/{data.ImagesCount}";
+                    case StateVM.States.CANCELLING:
+                        return $"cancelling...";
+                    case StateVM.States.COMPLETED:
+                        return $"processed {data.ProgressCount}/{data.ImagesCount} images";
+                    case StateVM.States.CANCELED:
+                        return $"canceled {data.ProgressCount}/{data.ImagesCount} images";
+                }
             }
             return "";
         }

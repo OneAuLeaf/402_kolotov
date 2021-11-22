@@ -17,7 +17,7 @@ namespace Recognition
             ImageName = imageName;
             ImagePath = imagePath;
             Bitmap = bitmap;
-            Objects = objects?.Select(x => new RecognizedObject(x, bitmap)).ToList();
+            Objects = objects?.Select(x => new RecognizedObject(x, bitmap, imagePath)).ToList();
         }
 
         public string ToString(string format)
@@ -35,13 +35,15 @@ namespace Recognition
     public class RecognizedObject
     {
         public string Label { get; }
+        public string OriginPath { get; }
         public float Confidence { get; }
         public Box Box { get; }
         public Bitmap CroppedImage { get; }
 
-        public RecognizedObject(YoloV4Result res, Bitmap image)
+        public RecognizedObject(YoloV4Result res, Bitmap image, string originPath)
         {
             Label = res.Label;
+            OriginPath = originPath;
             Box = new Box(res.BBox[0], res.BBox[1], res.BBox[2], res.BBox[3]);
             Confidence = res.Confidence;
 

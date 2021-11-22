@@ -7,7 +7,6 @@ using System.Threading.Tasks.Dataflow;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Collections.Concurrent;
 using static Microsoft.ML.Transforms.Image.ImageResizingEstimator;
 
 namespace Recognition
@@ -30,9 +29,11 @@ namespace Recognition
             "scissors", "teddy bear", "hair drier", "toothbrush"
         };
 
-        SemaphoreSlim cancelRequest = new SemaphoreSlim(0, 1);
+        SemaphoreSlim cancelRequest = new SemaphoreSlim(0);
+        SemaphoreSlim cancelAnswer = new SemaphoreSlim(0);
 
-        public IReceivableSourceBlock<RecognizedImage> ResultsQueue;
+        public BufferBlock<RecognizedImage> ResultsQueue { get; private set; }
+        public CancellationTokenSource CTS { get; private set; }
         public string ModelPath { get; private set; }
         public int ThreadNum { get; private set; }
 
@@ -40,12 +41,10 @@ namespace Recognition
         {
             ModelPath = modelPath;
             ThreadNum = threadsNum ?? s_threadMax;
+            Flush();
         }
-
         public async Task Recognize(string inputPath)
         {
-            var cts = new CancellationTokenSource();
-
             MLContext mlContext = new MLContext();
 
             // model is available here:
@@ -80,13 +79,13 @@ namespace Recognition
             var cancel_check = Task.Factory.StartNew(() =>
             {
                 cancelRequest.Wait();
-                cts.Cancel();
+                CTS.Cancel();
             },
             TaskCreationOptions.LongRunning);
 
             var preProcessing = new TransformBlock<string, RecognizedImage>(file =>
             {
-                if (cts.Token.IsCancellationRequested) {
+                if (CTS.Token.IsCancellationRequested) {
                     return null;
                 }
                 var name = Path.GetFileName(file);
@@ -98,57 +97,71 @@ namespace Recognition
             },
             new ExecutionDataflowBlockOptions
             {
-                CancellationToken = cts.Token,
+                CancellationToken = CTS.Token,
                 MaxDegreeOfParallelism = ThreadNum
             });
 
             var predicting = new TransformBlock<RecognizedImage, RecognizedImage>(x =>
             {
-                if (cts.Token.IsCancellationRequested) {
+                if (CTS.Token.IsCancellationRequested) {
                     return null;
                 }
                 var engine = mlContext.Model.CreatePredictionEngine<YoloV4BitmapData, YoloV4Prediction>(fitted);
                 var results = engine.Predict(new YoloV4BitmapData() { Image = x.Bitmap });
-                x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(y => new RecognizedObject(y, x.Bitmap)).ToList();
+                x.Objects = results.GetResults(s_classesNames, 0.5f, 0.7f).Select(y => new RecognizedObject(y, x.Bitmap, x.ImagePath)).ToList();
                 return x;
             },
             new ExecutionDataflowBlockOptions
             {
-                CancellationToken = cts.Token,
+                CancellationToken = CTS.Token,
                 MaxDegreeOfParallelism = ThreadNum
-            });
-            var producing = new BufferBlock<RecognizedImage>(
-            new ExecutionDataflowBlockOptions
-            {
-                CancellationToken = cts.Token,
-                MaxDegreeOfParallelism = 1
             });
 
             var linkOption = new DataflowLinkOptions { PropagateCompletion = true };
             preProcessing.LinkTo(predicting, linkOption, x => x != null);
-            predicting.LinkTo(producing, linkOption, x => x != null);
+            predicting.LinkTo(ResultsQueue, linkOption, x => x != null);
 
             Parallel.ForEach(allFiles, file => preProcessing.Post(file));
-
-            ResultsQueue = producing;
 
             preProcessing.Complete();
             try
             {
-                await producing.Completion; 
+                await ResultsQueue.Completion;
+                if (predicting.Completion.IsCompletedSuccessfully)
+                {
+                    cancelRequest.Release();
+                }
+                if (predicting.Completion.IsCanceled)
+                {
+                    cancelAnswer.Release();
+                }
             }
             catch (TaskCanceledException)
             {
             }
             finally
             {
-                cancelRequest.Release();
+                cancel_check.Wait();
+                Flush();
             }
         }
             
         public void Cancel()
         {
             cancelRequest.Release();
+            cancelAnswer.Wait();
+        }
+
+        private void Flush()
+        {
+            if (CTS != null)
+                CTS.Dispose();
+            CTS = new CancellationTokenSource();
+            ResultsQueue = new BufferBlock<RecognizedImage>(
+            new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = 1
+            });
         }
     }
 }
