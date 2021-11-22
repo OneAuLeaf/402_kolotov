@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks.Dataflow;
 using System.Threading.Tasks;
 using System.Threading;
 using Recognition;
@@ -12,7 +13,7 @@ namespace ConsoleApp
 
         readonly static int ThreadNum = Environment.ProcessorCount;
         // args: path_to_images [path_to_model, [threads_num]]
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             string pathImages, modelPath;
             int threadNum;
@@ -37,9 +38,7 @@ namespace ConsoleApp
                 default:
                     return;
             }
-
             Recognizer recognizer = new Recognizer(modelPath, threadNum);
-
             var res = recognizer.Recognize(pathImages);
 
             var t = Task.Factory.StartNew(() =>
@@ -49,13 +48,10 @@ namespace ConsoleApp
                 }
             },
             TaskCreationOptions.LongRunning);
-            
-            RecognizedImage image;
-            while (!res.IsCompleted || !recognizer.ResultsQueue.IsEmpty) {
 
-                if (recognizer.ResultsQueue.TryDequeue(out image))
-                    Console.WriteLine(image.ToString("0.00"));
-                Thread.Sleep(0);
+            while (await recognizer.ResultsQueue.OutputAvailableAsync()) {
+                var image = recognizer.ResultsQueue.Receive();
+                Console.WriteLine(image.ToString("0.00"));
             }
         }
     }
