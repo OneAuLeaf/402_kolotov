@@ -57,6 +57,15 @@ namespace Recognition
             }
         }
 
+        public RecognizedObject(string label, string path, float proba, float x, float y, float w, float h, Bitmap cropped)
+        {
+            Label = label;
+            OriginPath = path;
+            Confidence = proba;
+            Box = new Box(x, y, x + w, y + h);
+            CroppedImage = cropped;
+        }
+
         public string ToString(string format)
         {
             return $" label={Label}, p={Confidence.ToString(format)}) " + Box.ToString(format);

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using System.Windows.Threading;
 using Recognition;
 
 namespace RecognitionUI
@@ -26,6 +27,7 @@ namespace RecognitionUI
         void ChooseModel();
         void Start();
         void Cancel();
+        void Clear();
     }
 
     public class StateVM: INotifyPropertyChanged
@@ -107,7 +109,7 @@ namespace RecognitionUI
 
         private bool checkUnreadyState()
         {
-            return string.IsNullOrEmpty(ModelPath) || string.IsNullOrEmpty(InputPath) || 
+            return string.IsNullOrEmpty(ModelPath) || string.IsNullOrEmpty(InputPath) ||
                 State.ImagesCount == 0 || Path.GetExtension(ModelPath) != s_modelExtension;
         }
 
@@ -136,7 +138,6 @@ namespace RecognitionUI
                 {
                     State.State = StateVM.States.READY;
                 }
-                RecognizedTypes.Clear();
             }
         }
 
@@ -156,35 +157,33 @@ namespace RecognitionUI
                 {
                     State.State = StateVM.States.READY;
                 }
-                RecognizedTypes.Clear();
             }
         }
 
-        public void Start()
+        public void Clear()
         {
             RecognizedTypes.Clear();
+        }
+
+        public async void Start()
+        {
             State.ProgressCount = 0;
             State.State = StateVM.States.PROCESS;
 
-            Task.Run(() => { return recognizer.Recognize(InputPath); });
+            _ = Task.Run(async () => { await recognizer.Recognize(InputPath); });
 
-            var t = Task.Factory.StartNew(async () =>
+            while (await recognizer.ResultsQueue.OutputAvailableAsync())
             {
-                while (await recognizer.ResultsQueue.OutputAvailableAsync())
+                await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+                var image = recognizer.ResultsQueue.Receive();
+                await RecognizedTypes.Add(image);
+                State.ProgressCount += 1;
+                if (State.ProgressCount == State.ImagesCount)
                 {
-                    var image = recognizer.ResultsQueue.Receive();
-                    RecognizedTypes.Add(image);
-                    State.ProgressCount += 1;
-                    if (State.ProgressCount == State.ImagesCount)
-                    {
-                        State.State = StateVM.States.COMPLETED;
-                        break;
-                    }
+                    State.State = StateVM.States.COMPLETED;
+                    break;
                 }
-            },
-            recognizer.CTS.Token,
-            TaskCreationOptions.None,
-            TaskScheduler.FromCurrentSynchronizationContext());
+            }
         }
 
         public void Cancel()
