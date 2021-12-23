@@ -26,36 +26,42 @@ namespace RecognitionUI
                         button_ChooseDir.IsEnabled = true;
                         button_Start.IsEnabled = false;
                         button_Cancel.IsEnabled = false;
+                        button_Clear.IsEnabled = true;
                         break;
                 case StateVM.States.READY:
                         button_ChooseModel.IsEnabled = true;
                         button_ChooseDir.IsEnabled = true;
                         button_Start.IsEnabled = true;
                         button_Cancel.IsEnabled = false;
+                        button_Clear.IsEnabled = true;
                         break;
                 case StateVM.States.PROCESS:
                         button_ChooseModel.IsEnabled = false;
                         button_ChooseDir.IsEnabled = false;
                         button_Start.IsEnabled = false;
                         button_Cancel.IsEnabled = true;
+                        button_Clear.IsEnabled = false;
                         break;
                 case StateVM.States.CANCELLING:
                         button_ChooseModel.IsEnabled = false;
                         button_ChooseDir.IsEnabled = false;
                         button_Start.IsEnabled = false;
                         button_Cancel.IsEnabled = false;
+                        button_Clear.IsEnabled = false;
                         break;
                 case StateVM.States.COMPLETED:
                         button_ChooseModel.IsEnabled = true;
                         button_ChooseDir.IsEnabled = true;
                         button_Start.IsEnabled = true;
                         button_Cancel.IsEnabled = false;
+                        button_Clear.IsEnabled = true;
                         break;
                 case StateVM.States.CANCELED:
                         button_ChooseModel.IsEnabled = true;
                         button_ChooseDir.IsEnabled = true;
                         button_Start.IsEnabled = true;
                         button_Cancel.IsEnabled = false;
+                        button_Clear.IsEnabled = true;
                         break;
             }
         }
@@ -77,6 +83,10 @@ namespace RecognitionUI
         private void button_Cancel_Click(object sender, RoutedEventArgs e)
         {
             viewModel.Cancel();
+        }
+        private void button_Clear_Click(object sender, RoutedEventArgs e)
+        {
+            viewModel.Clear();
         }
     }
 
